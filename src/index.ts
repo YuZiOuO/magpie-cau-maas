@@ -105,10 +105,21 @@ export const CauMaasPlugin = async () => ({
         return {
           user: user.user_name,
           plan: "CAU MaaS",
-          // 平台金额为人民币元;"0" 表示未设上限,此时仅展示已用
-          balance: budgetLimit > 0 ? Math.max(budgetLimit - used, 0) : used,
-          renew: budgetLimit > 0,
           until: until ? new Date(until * 1000).toISOString() : undefined,
+          windows: [
+            {
+              name: "本月",
+              // 平台金额为人民币元;budgetLimit 为 0 表示未设上限,仅展示已用
+              display:
+                budgetLimit > 0
+                  ? `¥${used.toFixed(4)} / ¥${budgetLimit}`
+                  : `已用 ¥${used.toFixed(4)}`,
+              ...(budgetLimit > 0
+                ? { amount: used, limit: budgetLimit, unit: "¥", used: (used / budgetLimit) * 100 }
+                : {}),
+              resetsAt: until ? new Date(until * 1000).toISOString() : undefined,
+            },
+          ],
           signIn: "renewed" as const,
         }
       } catch (e) {
@@ -118,6 +129,22 @@ export const CauMaasPlugin = async () => ({
           signIn: expired ? ("expired" as const) : ("kept" as const),
         }
       }
+    },
+  },
+
+  // 列出该账号可用的模型(Bearer key 拉 /v1/models)
+  provider: {
+    id: PROVIDER_ID,
+    async models(provider: any, { auth }: { auth?: { type?: string; key?: string } } = {}) {
+      if (auth?.type !== "api" || !auth.key) return provider.models
+      const res = await fetch(`${BASE}/v1/models`, {
+        headers: { authorization: `Bearer ${auth.key}` },
+      })
+      if (!res.ok) return provider.models // 失败时保留原列表
+      const { data } = (await res.json()) as { data: { id: string; name?: string }[] }
+      return Object.fromEntries(
+        data.map((m) => [m.id, { id: m.id, name: m.name ?? m.id }]),
+      )
     },
   },
 })
