@@ -125,7 +125,7 @@ export async function loginWithCas(username: string, password: string): Promise<
   const { jwt } = await followRedirects(jar, callbackUrl)
   if (!jwt) throw new Error("回跳链未捕获到 jwt_token")
 
-  // 5. 换 API Key:优先复用默认 ACTIVE,否则以 "magpie" 为名创建
+  // 5. 换 API Key:只认名为 "magpie" 的,没有则以 "magpie" 为名创建
   const headers = { cookie: `jwt_token=${jwt}`, accept: "application/json" }
   const user = await fetch(`${BASE}/api/user/current`, { headers }).then((r) =>
     asJson<{ user_name: string; user_id: number }>(r),
@@ -133,11 +133,9 @@ export async function loginWithCas(username: string, password: string): Promise<
   const { keys } = await fetch(`${BASE}/api/user/api_keys/?user_id=${user.user_id}`, {
     headers,
   }).then((r) =>
-    asJson<{ keys?: { api_key: string; is_default: boolean; status: string }[] }>(r),
+    asJson<{ keys?: { api_key: string; name: string; status: string }[] }>(r),
   )
-  const existing = keys?.find((k) => k.is_default && k.status === "ACTIVE") ?? keys?.[0]
-
-  let apiKey = existing?.api_key
+  let apiKey = keys?.find((k) => k.name === "magpie" && k.status === "ACTIVE")?.api_key
   if (!apiKey) {
     const created = await fetch(`${BASE}/api/user/api_keys/`, {
       method: "POST",

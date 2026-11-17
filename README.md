@@ -1,6 +1,6 @@
 # CAU MaaS — Magpie 插件
 
-将 [maas.cau.edu.cn](https://maas.cau.edu.cn)(中国农业大学 MaaS 平台,New API 套壳,OpenAI 兼容)接入 Magpie,支持统一身份认证登录与用量显示。
+将 [maas.cau.edu.cn](https://maas.cau.edu.cn) (中国农业大学 MaaS 平台) 接入 Magpie,支持统一身份认证登录与用量显示。
 
 ## 安装
 
@@ -17,14 +17,11 @@ magpie quota
 1. **统一身份认证登录(推荐)**:输入学号/工号和 CAS 密码,零浏览器零粘贴。插件纯 HTTP 跑完 SSO 链(OIDC → CAS → ticket 回跳)拿 `jwt_token`,自动复用默认 API Key(没有则以 `magpie` 为名创建)。
 2. **直接粘贴 API Key**:已有 Key 时直接使用。
 
-> 保存的凭证是 API Key(长期有效);`jwt_token` 仅约 3 天有效,只作登录中间态。
-
 ## 实现要点
 
 - `src/index.ts` — 插件主体:`config` 注册 provider、`auth.methods` 两种登录、`loader` 注入 Bearer、`usage` 读 `/api/budget/me`、`provider.models` 列模型
 - `src/sso.ts` — CAS 纯 HTTP 登录:`/api/auth/cau/start` → OIDC → `onecas.cau.edu.cn` CAS 表单(`strEnc(学号+密码+lt)` 三重 DES)→ ticket 回跳 → `Set-Cookie: jwt_token`
 - `src/des-loader.ts` — 平台原版 `des.js`(Guapo DES 变体)内含隐式全局循环变量,ESM 严格模式会炸,故用 `node:vm` 沙箱加载
-- CAS 密码仅在登录请求期间存在于内存,不落盘
 
 平台对 Magpie 暴露的接口全部可用 Bearer API Key 访问:
 
