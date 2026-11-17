@@ -1,40 +1,21 @@
-// 纯 HTTP CAS 统一身份认证登录(无浏览器)。
-// 流程:
-//   1. GET /api/auth/cau/start → OIDC authorize → CAS 登录页(拿 lt/execution/JSESSIONID)
-//   2. rsa = strEnc(un+pd+lt, '1','2','3')(Bun vm 跑平台原版 des.js)
-//   3. POST /tpass/login → 302 到 /oidc/upstream/callback/cas?ticket=...
-//   4. 跟回跳链 → /api/auth/external/cau/callback 的 Set-Cookie 捕获 jwt_token
-//   5. 用 jwt 换 API Key;jwt 仅作中间态,不返回
+// 纯 HTTP CAS 统一身份认证登录(无浏览器):
+//   1. /api/auth/cau/start → OIDC → CAS 登录页(拿 lt/execution)
+//   2. rsa = strEnc(学号+密码+lt,'1','2','3')(平台原版 des.js,见 des-loader.ts)
+//   3. POST CAS 登录 → 302 ticket 回跳 → Set-Cookie jwt_token
+//   4. 用 jwt 复用/创建 API Key;jwt 仅作中间态,不返回
 
-import vm from "node:vm"
-import { readFileSync } from "node:fs"
-import { fileURLToPath } from "node:url"
-import { dirname, join } from "node:path"
+import { strEnc } from "./des-loader"
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
 const BASE = "https://maas.cau.edu.cn"
 const BROWSER_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-// 加载平台原版 des.js,拿到 strEnc
-const desSandbox: { strEnc?: (data: string, k1: string, k2: string, k3: string) => string } = {}
-vm.createContext(desSandbox)
-vm.runInContext(readFileSync(join(__dirname, "des.js"), "utf-8"), desSandbox)
-const strEnc = desSandbox.strEnc!
-if (!strEnc) throw new Error("des.js 未导出 strEnc")
-
-export interface SsoLoginResult {
-  userName: string
-  apiKey: string
-  accountId: string
-}
 
 const asJson = async <T>(res: Response): Promise<T> => {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as T
 }
 
-// cookie jar:domain -> Map(name -> value)
+// cookie jar:domain → Map(name → value)
 class CookieJar {
   private store = new Map<string, Map<string, string>>()
 
@@ -59,15 +40,13 @@ class CookieJar {
   }
 }
 
-const domainOf = (url: string) => new URL(url).hostname
-
 async function fetchWithJar(
   jar: CookieJar,
   url: string,
   init: RequestInit = {},
   redirect: "follow" | "manual" = "manual",
 ): Promise<Response> {
-  const domain = domainOf(url)
+  const domain = new URL(url).hostname
   const headers = new Headers(init.headers)
   headers.set("user-agent", BROWSER_UA)
   const cookie = jar.header(domain)
@@ -77,16 +56,14 @@ async function fetchWithJar(
   return res
 }
 
-// 跟踪重定向链,直到拿到最终 Set-Cookie jwt_token
+// 跟踪重定向链,拿到 maas 的 jwt_token 即停
 async function followRedirects(
   jar: CookieJar,
   startUrl: string,
-  maxHops = 20,
 ): Promise<{ finalUrl: string; jwt: string | null }> {
   let url = startUrl
-  for (let i = 0; i < maxHops; i++) {
-    const res = await fetchWithJar(jar, url, {}, "manual")
-    // 任何时候拿到 maas 的 jwt_token 就停
+  for (let i = 0; i < 20; i++) {
+    const res = await fetchWithJar(jar, url)
     const jwt = jar.get("maas.cau.edu.cn", "jwt_token")
     if (jwt) return { finalUrl: url, jwt }
     const loc = res.headers.get("location")
@@ -94,6 +71,12 @@ async function followRedirects(
     url = loc.startsWith("http") ? loc : new URL(loc, url).href
   }
   return { finalUrl: url, jwt: jar.get("maas.cau.edu.cn", "jwt_token") ?? null }
+}
+
+export interface SsoLoginResult {
+  userName: string
+  apiKey: string
+  accountId: string
 }
 
 export async function loginWithCas(username: string, password: string): Promise<SsoLoginResult> {
@@ -105,64 +88,54 @@ export async function loginWithCas(username: string, password: string): Promise<
     throw new Error(`未到达 CAS 登录页,停在 ${casLoginUrl}`)
   }
 
-  // 2. 拿登录页提取 lt/execution
-  const loginPageRes = await fetchWithJar(jar, casLoginUrl, {}, "follow")
-  const html = await loginPageRes.text()
+  // 2. 提取 lt/execution
+  const html = await (await fetchWithJar(jar, casLoginUrl, {}, "follow")).text()
   const lt = html.match(/name="lt"\s+value="([^"]+)"/)?.[1]
   const execution = html.match(/name="execution"\s+value="([^"]+)"/)?.[1]
   if (!lt || !execution) throw new Error("CAS 登录页缺少 lt/execution")
 
-  // 3. 加密并提交
-  const rsa = strEnc(username + password + lt, "1", "2", "3")
-  const form = new URLSearchParams({
-    rsa,
-    ul: String(username.length),
-    pl: String(password.length),
-    sl: "0",
-    lt,
-    execution,
-    _eventId: "submit",
-  })
+  // 3. 加密并提交;失败返回 200 错误页,成功 302 带 ticket
   const submitRes = await fetchWithJar(
     jar,
     casLoginUrl,
     {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
+      body: new URLSearchParams({
+        rsa: strEnc(username + password + lt, "1", "2", "3"),
+        ul: String(username.length),
+        pl: String(password.length),
+        sl: "0",
+        lt,
+        execution,
+        _eventId: "submit",
+      }).toString(),
     },
     "manual",
   )
-
-  // 登录失败会返回 200(错误页);成功是 302 到回跳 URL
   if (submitRes.status !== 302) {
-    const errHtml = await submitRes.text()
-    const errMsg = errHtml.match(/id="errormsg"[^>]*>([^<]+)</)?.[1] ?? "账号或密码错误"
+    const errMsg =
+      (await submitRes.text()).match(/id="errormsg"[^>]*>([^<]+)</)?.[1] ?? "账号或密码错误"
     throw new Error(`CAS 登录失败: ${errMsg}`)
   }
-
   const callbackUrl = submitRes.headers.get("location")
-  if (!callbackUrl || !callbackUrl.includes("ticket=")) {
-    throw new Error("CAS 登录成功但未返回 ticket")
-  }
+  if (!callbackUrl?.includes("ticket=")) throw new Error("CAS 登录成功但未返回 ticket")
 
   // 4. 跟回跳链拿 jwt
   const { jwt } = await followRedirects(jar, callbackUrl)
   if (!jwt) throw new Error("回跳链未捕获到 jwt_token")
 
-  // 5. 换 API Key
+  // 5. 换 API Key:优先复用默认 ACTIVE,否则以 "magpie" 为名创建
   const headers = { cookie: `jwt_token=${jwt}`, accept: "application/json" }
   const user = await fetch(`${BASE}/api/user/current`, { headers }).then((r) =>
     asJson<{ user_name: string; user_id: number }>(r),
   )
-
-  const keysRes = await fetch(`${BASE}/api/user/api_keys/?user_id=${user.user_id ?? 0}`, {
+  const { keys } = await fetch(`${BASE}/api/user/api_keys/?user_id=${user.user_id}`, {
     headers,
   }).then((r) =>
     asJson<{ keys?: { api_key: string; is_default: boolean; status: string }[] }>(r),
   )
-  const existing =
-    keysRes.keys?.find((k) => k.is_default && k.status === "ACTIVE") ?? keysRes.keys?.[0]
+  const existing = keys?.find((k) => k.is_default && k.status === "ACTIVE") ?? keys?.[0]
 
   let apiKey = existing?.api_key
   if (!apiKey) {
@@ -170,7 +143,7 @@ export async function loginWithCas(username: string, password: string): Promise<
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({
-        user_id: user.user_id ?? 0,
+        user_id: user.user_id,
         name: "magpie",
         allowed_ip_networks: [],
         allowed_ip_networks_enabled: false,

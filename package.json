@@ -8,7 +8,22 @@
   },
   "description": "CAU MaaS (maas.cau.edu.cn) provider for Magpie — 统一身份认证登录 + 用量显示",
   "license": "MIT",
-  "keywords": ["opencode", "opencode-plugin", "magpie", "cau", "new-api"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YuZiOuO/magpie-cau-maas.git"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "magpie",
+    "cau",
+    "new-api"
+  ],
   "magpie": {
     "name": "CAU MaaS",
     "icon": "https://www.cau.edu.cn/static2022/images/favicon.ico",
