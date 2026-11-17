@@ -1,6 +1,6 @@
 {
   "name": "opencode-cau-maas-auth",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "main": "./src/index.ts",
   "devDependencies": {
     "@types/bun": "^1.4.4",
@@ -22,7 +22,11 @@
     "opencode-plugin",
     "magpie",
     "cau",
-    "new-api"
+    "maas",
+    "china-agricultural-university",
+    "中国农业大学",
+    "中国农大",
+    "中农"
   ],
   "magpie": {
     "name": "CAU MaaS",
