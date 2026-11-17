@@ -1,9 +1,12 @@
 {
   "name": "opencode-cau-maas-auth",
   "version": "0.1.0",
-  "description": "CAU MaaS (maas.cau.edu.cn) provider for Magpie — 统一身份认证登录 + 用量显示",
-  "type": "module",
   "main": "./src/index.ts",
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^5.9.0"
+  },
+  "description": "CAU MaaS (maas.cau.edu.cn) provider for Magpie — 统一身份认证登录 + 用量显示",
   "keywords": ["opencode", "opencode-plugin", "magpie", "cau", "new-api"],
   "magpie": {
     "name": "CAU MaaS",
@@ -13,8 +16,5 @@
     },
     "maxConcurrency": 8
   },
-  "devDependencies": {
-    "@types/bun": "^1.4.4",
-    "typescript": "^5.9.0"
-  }
+  "type": "module"
 }

@@ -12,10 +12,15 @@ magpie quota                          # 查看用量
 
 ## 登录方式
 
-1. **统一身份认证登录(浏览器)**:插件打开浏览器,完成 CAU 统一身份认证后,在 MaaS 的「API Key」页面复制 API Key 粘贴回 Magpie。插件会用 Key 换取会话 cookie 一并保存。
+1. **统一身份认证登录(推荐)**:输入学号/工号和统一身份认证(CAS)密码即可,**无需打开浏览器、无需复制粘贴**。插件在后台以纯 HTTP 请求跑完整 SSO 链(OIDC → CAS → ticket 回跳),拿到 `jwt_token` 后自动复用默认 API Key(没有则以 `magpie` 为名自动创建一个)。
 2. **直接粘贴 API Key**:已有 Key 时直接使用。
 
-> 为什么浏览器登录后仍需粘贴一次 Key?MaaS 是会话制鉴权(非 OAuth 跳转),浏览器登录态无法自动回传给插件;而 `jwt_token` 仅约 3 天有效,API Key 长期有效且权限等价(聊天、模型列表、用量查询均可),故以 Key 作为主凭证。
+> 登录成功后实际保存的凭证是 API Key:它长期有效,聊天、模型列表、用量查询均可用;`jwt_token` 仅约 3 天有效,仅作为登录过程的一次性中间态。
+
+## 实现要点
+
+- SSO 链见 `src/sso.ts`:`/api/auth/cau/start` → OIDC authorize → `onecas.cau.edu.cn` CAS 登录表单(密码字段为 `strEnc(学号+密码+lt)` 三重 DES,直接复用平台原版 `des.js` 在 Bun `node:vm` 沙箱中执行)→ 302 回跳链 → `Set-Cookie: jwt_token`。
+- CAS 密码仅在登录请求期间存在于内存,不落盘。
 
 ## 功能
 
@@ -23,7 +28,7 @@ magpie quota                          # 查看用量
 - **用量显示**:查询 `/api/budget/me`,展示本月已用金额(或预算剩余)与账期结束时间
 - **凭证验证**:登录时即调用 `/api/auth/login` 验证 Key 有效性,避免存下无效凭证
 
-## 实现要点
+## 实现要点(续)
 
 平台对 Magpie 暴露的接口全部可用 Bearer API Key 访问:
 
