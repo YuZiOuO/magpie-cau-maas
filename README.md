@@ -5,9 +5,9 @@
 ## 安装
 
 ```bash
-magpie plugin add /path/to/cau-maas   # 本地目录开发
-magpie plugin login cau-maas          # 登录
-magpie quota                          # 查看用量
+magpie plugin add github:YuZiOuO/cau-maas   # 从 GitHub 安装
+magpie plugin login cau-maas                           # 登录
+magpie quota                                           # 查看用量
 ```
 
 ## 登录方式
