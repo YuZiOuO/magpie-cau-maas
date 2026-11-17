@@ -10,6 +10,7 @@
   "keywords": ["opencode", "opencode-plugin", "magpie", "cau", "new-api"],
   "magpie": {
     "name": "CAU MaaS",
+    "icon": "https://www.cau.edu.cn/static2022/images/favicon.ico",
     "summary": {
       "en": "Sign in to maas.cau.edu.cn via CAU SSO and show monthly usage",
       "zh": "通过 CAU 统一身份认证接入 maas.cau.edu.cn 并显示用量"

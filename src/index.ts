@@ -30,6 +30,7 @@ export const CauMaasPlugin = async () => ({
 
   auth: {
     provider: PROVIDER_ID,
+    icon: "https://www.cau.edu.cn/static2022/images/favicon.ico",
     methods: [
       {
         type: "api",
